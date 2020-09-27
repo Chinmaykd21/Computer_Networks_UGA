@@ -1,0 +1,20 @@
+traceroute to www.yahoo.com.hk (74.6.136.150), 30 hops max, 60 byte packets
+ 1  172.17.149.1 (172.17.149.1)  0.794 ms  1.248 ms  1.710 ms
+ 2  128.192.0.5 (128.192.0.5)  0.256 ms  0.341 ms  0.421 ms
+ 3  1057-Life-BAgg-R.net.uga.edu (172.31.43.106)  0.843 ms 1023-Boyd-BAgg-R.net.uga.edu (172.31.42.106)  0.793 ms  1.162 ms
+ 4  * 1023-Boyd-Core-R.net.uga.edu (172.31.40.2)  0.826 ms 1023-Boyd-Core-R.net.uga.edu (172.31.40.0)  1.003 ms
+ 5  Peabody-MX-re0.net.uga.edu (172.31.40.26)  0.643 ms Boyd-MX-re0.net.uga.edu (172.31.40.24)  0.561 ms Peabody-MX-re0.net.uga.edu (172.31.40.26)  0.602 ms
+ 6  172.31.47.9 (172.31.47.9)  0.909 ms 172.31.47.25 (172.31.47.25)  1.074 ms  1.004 ms
+ 7  Peabody-MX-re0.net.uga.edu (172.31.47.21)  1.415 ms Boyd-MX-re0.net.uga.edu (172.31.47.5)  1.411 ms  1.323 ms
+ 8  trcpsx.net.uga.edu (128.192.166.41)  3.281 ms  3.702 ms  3.647 ms
+ 9  et-4-3-0.189.rtsw.atla.net.internet2.edu (198.71.47.165)  3.668 ms  3.642 ms  3.564 ms
+10  ae-4.4079.rtsw.wash.net.internet2.edu (198.71.45.7)  16.819 ms  16.772 ms  16.777 ms
+11  64.57.29.131 (64.57.29.131)  17.121 ms  17.108 ms  17.102 ms
+12  g2-12-bas2.dce.yahoo.com (206.126.236.2)  17.453 ms  17.396 ms exchange-cust1.dc2.equinix.net (206.126.236.16)  17.235 ms
+13  UNKNOWN-216-115-110-X.yahoo.com (216.115.110.236)  23.278 ms  24.699 ms ae-4-0.pat1.nyc.yahoo.com (216.115.104.121)  22.797 ms
+14  ae-0.pat2.bfw.yahoo.com (216.115.111.30)  31.411 ms  31.500 ms ae-0.pat1.bfw.yahoo.com (216.115.111.24)  34.147 ms
+15  et-0-1-1.msr2.bf2.yahoo.com (74.6.227.61)  33.805 ms et-0-1-1.msr1.bf2.yahoo.com (74.6.227.67)  33.620 ms et-0-1-1.msr1.bf1.yahoo.com (74.6.227.65)  32.942 ms
+16  et-18-0-0.clr2-a-gdc.bf2.yahoo.com (74.6.122.65)  33.418 ms et-19-0-0.clr1-a-gdc.bf2.yahoo.com (74.6.122.41)  34.217 ms  33.031 ms
+17  lo0.fab7-1-gdc.bf2.yahoo.com (74.6.123.238)  31.383 ms lo0.fab2-1-gdc.bf2.yahoo.com (74.6.123.243)  32.897 ms lo0.fab5-1-gdc.bf2.yahoo.com (74.6.123.240)  34.341 ms
+18  lo0.usw1-1-lba.bf2.yahoo.com (74.6.98.136)  34.224 ms lo0.usw2-1-lba.bf2.yahoo.com (74.6.98.137)  34.381 ms lo0.usw1-1-lba.bf2.yahoo.com (74.6.98.136)  34.142 ms
+19  w2.src.vip.bf1.yahoo.com (74.6.136.150)  32.667 ms  32.758 ms  34.022 ms
