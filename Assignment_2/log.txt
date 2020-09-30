@@ -1,1 +1,0 @@
-dns.google.com A ALLOW
