@@ -13,78 +13,88 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
     SERVER_IP = '127.0.0.1'
     SERVER_PORT = 53
 
-    print("\n<------------------------Start of the DNS request------------------------>\n")
-    print("Listening on %s for the DNS request from the client...\n" % SERVER_IP)
+    print("\n<--------------------------------------Start of the DNS request------------------------------------------->\n")
+    print("Listening on %s for the request from the client...\n" % SERVER_IP)
 
     # DGRAM = datagram packet, means it can accept UDP packages
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((SERVER_IP, SERVER_PORT))
-    except:
-        print("Failed to bind the socket to %s server at port %d\n" %(SERVER_IP, SERVER_PORT))
+    except Exception as e:
+        print("Failed to bind the socket to %s server at port %d.\n" %(SERVER_IP, SERVER_PORT))
+        print("""There might be two reason for this:\n 
+        1. The file dns_forwarder.py does not have permission to run the code. 
+        (in this case please give proper permissions to the file or run the code with sudo)\n 
+        2. This socket might be running on some other terminal on this system.\n 
+        The server will be stopped, please restart the server after solving the potential issues.\n""")
+        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
         exit(0)
-    while 1:
 
+    while 1:
         # UDP_PAYLOAD = entire udp message minus UDP_header
         client_payload, client_addr = sock.recvfrom(1024)
-        
         print('DNS package has arrived from %s:%s\n' % client_addr)
-        
-        dns = DNS(client_payload)
+        try:
+        # Converting the byte packet to DNS format using scapy
+            dns = DNS(client_payload)
+            if not dns.qd:
+                print("Please send valid DNS packets.\n")
+                exit(0)
+        except Exception as e:
+            print("Error while converting the packet recieved from client\n")
+            print(e)
 
         # To get the query type, e.g.,'A' = IPv4, 'AAAA' = IPv6
         queryType = dnsqtypes[dns[DNSQR].qtype]
 
         # To get the domain name
-        domainName = dns[DNSQR].qname.decode().rstrip(".")
+        domainName = dns[DNSQR].qname.decode()
 
+        if domainName == ".":
         # send the domainName, deny_list_file, log_file to the checkDomain function.
-        domain, flag = checkDomain(domainName, deny_list_file)
-        
+            domain, flag = checkDomain(domainName, deny_list_file)
+        else:
+            domainName = domainName.rstrip(".")
+            domain, flag = checkDomain(domainName, deny_list_file)
+
         # Store the returned result with the following format domainname querytype ALLOW/DENY in the log file
         storeLogs(domain, queryType, flag, log_file)
 
         if flag == "ALLOW":
         # If the defaultDoH is True then use DoH method to send the DNS request over https otherwise use normal DNS resolver
             if defaultDoH == True and doh_server == None:
-                
+                # defaultDoH server
                 doh_server = "dns.google"
-                
-                print("Using default doh_server %s\n" % doh_server)
-                
+                print("Default DoH server:%s\n" % doh_server)
                 # Encode the dns packet in base_64 encoding before sending it via DoH
                 base64_dns = base64.urlsafe_b64encode(bytes(client_payload)).rstrip(b"=")
                 append_string = str(base64_dns, 'UTF-8')
-
+                print("DNS query with url safe base64 encoding:\n%s\n" % append_string)
                 # use this string to attach to the request.get method
                 query_string = "https://" + doh_server + "/dns-query?dns=" + append_string
-
                 # Using the request module query DNS over https
                 try:
                     https_response = requests.get(query_string)
-
                     # if the status code of the reponse is 200 then send the response to the client, otherwise send NXDomain packet to the client
                     if https_response.status_code == 200:
-                    # Sending the https_response(which is byte object) to the client and it will print the reponse properly
+                    # Sending the https_response.content(which is byte object) to the client and it will print the reponse properly
                         sock.sendto(https_response.content, client_addr)
-                        print("Check the client for the response from the resolver!\n")
-                        print("<------------------------End of the DNS request------------------------>\n")
+                        print("Status code:%d\n" % https_response.status_code)
+                        print("Response sent to the client.\n")
+                        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
                     else:
                         print("Response recieved from the doh_server does not have status code 200. Sending NXDomain packet to client\n")
+                        print("Status code:%d\n" % https_response.status_code)
                         dns.qr = 1
                         # This flag indicate the status of packet,i.e, the NXDomain packet
                         dns.rcode = 3
                         sock.sendto(bytes(dns), client_addr)
                         print("Check the client for the response from the resolver!\n")
-                        print("<------------------------End of the DNS request------------------------>\n")
+                        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
                 except requests.RequestException as e:
-                    dns.qr = 1
-                    # This flag indicate the status of packet,i.e, the NXDomain packet
-                    dns.rcode = 3
-                    sock.sendto(bytes(dns), client_addr)
-                    print("Check the client for the response from the resolver!\n")
-                    print("<------------------------End of the DNS request------------------------>\n")
+                    print("There might be some error while getting response from DoH server. Sending NXDomain packet to client.\n")
+                    print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
             elif defaultDoH == True and doh_server != None:
                 print("Using doh_server %s entered by the user\n" % doh_server)
@@ -93,6 +103,8 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
                 base64_dns = base64.urlsafe_b64encode(bytes(client_payload)).rstrip(b"=")
                 append_string = str(base64_dns, 'UTF-8')
                 
+                print("DNS query with base64 encoding:\n%s\n" % append_string)
+                
                 # use this string to attach to the request.get method
                 query_string = "https://" + doh_server + "/dns-query?dns=" + append_string
                 
@@ -100,29 +112,27 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
                 try:
                     https_response = requests.get(query_string)
                     if https_response.status_code == 200:
+                        print("Status code:%d\n" % https_response.status_code)
                         # Converting the https_response object to the DNS packet and then send it to checkID function
                         new_response = checkID(dns, DNS(https_response.content))
 
                         # Sending the https_response(which is byte object) to the client and it will print the reponse properly
                         sock.sendto(new_response, client_addr)
                         print("Check the client for the response from the resolver!\n")
-                        print("<------------------------End of the DNS request------------------------>\n")
+                        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
                     else:
                         print("Response recieved from the doh_server does not have status code 200. Sending NXDomain packet to client\n")
+                        print("Status code:%d\n" % https_response.status_code)
                         dns.qr = 1
                         # This flag indicate the status of packet,i.e, the NXDomain packet
                         dns.rcode = 3
                         sock.sendto(bytes(dns), client_addr)
                         print("Check the client for the response from the resolver!\n")
-                        print("<------------------------End of the DNS request------------------------>\n")
+                        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
                 except requests.RequestException as e:
-                    dns.qr = 1
-                    # This flag indicate the status of packet,i.e, the NXDomain packet
-                    dns.rcode = 3
-                    sock.sendto(bytes(dns), client_addr)
-                    print("Check the client for the response from the resolver!\n")
-                    print("<------------------------End of the DNS request------------------------>\n")
+                    print("There might be some error while getting response from DoH server. Sending NXDomain packet to client.\n")
+                    print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
             elif defaultDoH == False and doh_server != None:
                 print("Using doh_server %s entered by the user\n" % doh_server)
@@ -134,38 +144,38 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
                 # use this string to attach to the request.get method
                 query_string = "https://" + doh_server + "/dns-query?dns=" + append_string
                 
+                print("DNS query with base64 encoding:\n%s\n" % append_string)
+
                 # Using the request module query DNS over https
                 try:
                     https_response = requests.get(query_string)
 
                     if https_response.status_code == 200:
+                        print("Status code:%d\n" % https_response.status_code)
                         # Converting the https_response object to the DNS packet and then send it to checkID function
                         new_response = checkID(dns, DNS(https_response.content))
 
                         # Sending the https_response(which is byte object) to the client and it will print the reponse properly
                         sock.sendto(new_response, client_addr)
                         print("Check the client for the response from the resolver!\n")
-                        print("<------------------------End of the DNS request------------------------>\n")
+                        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
                     else:
                         print("Response recieved from the doh_server does not have status code 200. Sending NXDomain packet to client\n")
+                        print("Status code:%d\n" % https_response.status_code)
                         dns.qr = 1
                         # This flag indicate the status of packet,i.e, the NXDomain packet
                         dns.rcode = 3
                         sock.sendto(bytes(dns), client_addr)
                         print("Check the client for the response from the resolver!\n")
-                        print("<------------------------End of the DNS request------------------------>\n")
+                        print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
                 except requests.RequestException as e:
-                    dns.qr = 1
-                    # This flag indicate the status of packet,i.e, the NXDomain packet
-                    dns.rcode = 3
-                    sock.sendto(bytes(dns), client_addr)
-                    print("Check the client for the response from the resolver!\n")
+                    print("There might be some error while getting response from DoH server. Sending NXDomain packet to client.\n")
                     print("<------------------------End of the DNS request------------------------>\n")
             
             else:
                 # Here check the IP address entered, if it is valid then only proceed, otherwise program will exit.
-                checkIP(dst_ip, client_addr)
+                checkIP(dst_ip)
 
                 # This is a workaround for the above issue
                 out_sckt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -174,7 +184,7 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
                 sock.sendto(dns_response, client_addr)
                 out_sckt.close()
                 print("Check the client for the response from the resolver!\n")
-                print("<------------------------End of the DNS request------------------------>\n")
+                print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
         elif flag == "DENY":
                 # This flag indicate that this is the answer packet
@@ -198,12 +208,17 @@ def checkDomain(domainName, deny_list_file):
             readLines = readFile.readlines()
             # Here we will check if the domain name sent from the client is present in the deny_list file or not.
             for line in readLines:
-                # If the domain name is found in deny list then send an NX message to the client stating that the domain name is blocked
-                fileDomain = line.strip().rstrip(".")
-                if fileDomain == domainName:
-                    print("%s domain name is present in the \"%s\" file, %s domain name is blocked\n" % (domainName, fileName,domainName))
+                # if the entered domain packet is "." or " "
+                if line == domainName:
+                    print("%s domain name is present in the \"%s\" file, %s domain name is blocked.\n" % (domainName, fileName,domainName))
                     return (domainName, "DENY")
-            print("Queried Domain:%s\n" % domainName)
+                # If the domain name is found in deny list then send an NX message to the client stating that the domain name is blocked
+                else:
+                    fileDomain = line.strip().rstrip(".")
+                    if fileDomain == domainName:
+                        print("%s domain name is present in the \"%s\" file, %s domain name is blocked.\n" % (domainName, fileName,domainName))
+                        return (domainName, "DENY")
+            print("Allowed Queried Domain:%s\n" % domainName)
             return (domainName, "ALLOW")
     else:
         print("The path enetered is not a valid path:\n", pathToDir)
@@ -213,12 +228,17 @@ def checkDomain(domainName, deny_list_file):
             readLines = readFile.readlines()
             # Here we will check if the domain name sent from the client is present in the deny_list file or not.
             for line in readLines:
-                # If the domain name is found in deny list then send an NX message to the client stating that the domain name is blocked
-                fileDomain = line.strip().rstrip(".")
-                if fileDomain == domainName:
-                    print("%s domain name is present in the Deny_Domain.txt file, %s domain name is blocked\n" % (domainName, domainName))
+                # if the entered domain packet is "." or " "
+                if line == domainName:
+                    print("%s domain name is present in the \"%s\" file, %s domain name is blocked.\n" % (domainName, fileName,domainName))
                     return (domainName, "DENY")
-            print("Queried Domain:%s\n" % domainName)
+                else:
+                # If the domain name is found in deny list then send an NX message to the client stating that the domain name is blocked
+                    fileDomain = line.strip().rstrip(".")
+                    if fileDomain == domainName:
+                        print("%s domain name is present in the Deny_Domain.txt file, %s domain name is blocked.\n" % (domainName, domainName))
+                        return (domainName, "DENY")
+            print("Allowed Queried Domain:%s\n" % domainName)
             return (domainName, "ALLOW")
 
 # This function will store the logs in the log file mentioned by the user
@@ -240,7 +260,7 @@ def storeLogs(domain, queryType, flag, log_file):
         print("Access the log file \"%s\" at %s\n" % (log_file, os.path.abspath(pathToDir)))
 
 # Invalid IP address or domain name as a parameter is not accepted, and upon identifying the legality of IP address this function will terminate the server
-def checkIP(ip, client_addr):
+def checkIP(ip):
     try:
         # This line will check the legality of the resolver's IP address entered by the user
         socket.inet_aton(ip)
@@ -292,9 +312,3 @@ def main():
 # calling the main function
 if __name__=='__main__':
     main()
-
-
-# This code fails when packets are sent through browser
-# ip_pkt = IP(dst = dst_ip)/UDP(dport=53)/dns
-# response = sr1(ip_pkt)
-# sock.sendto(bytes(response['DNS']), client_addr)
