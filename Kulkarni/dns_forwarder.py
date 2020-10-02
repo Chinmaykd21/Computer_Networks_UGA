@@ -23,8 +23,7 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
     except Exception as e:
         print("Failed to bind the socket to %s server at port %d.\n" %(SERVER_IP, SERVER_PORT))
         print("""There might be two reason for this:\n 
-        1. The file dns_forwarder.py does not have permission to run the code. 
-        (in this case please give proper permissions to the file or run the code with sudo)\n 
+        1. You did not run the file dns_forwarder.py with sudo.\n 
         2. This socket might be running on some other terminal on this system.\n 
         The server will be stopped, please restart the server after solving the potential issues.\n""")
         print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
@@ -41,7 +40,7 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
                 print("Please send valid DNS packets.\n")
                 exit(0)
         except Exception as e:
-            print("Error while converting the packet recieved from client\n")
+            print("Error while converting the packet recieved from client.\n")
             print(e)
 
         # To get the query type, e.g.,'A' = IPv4, 'AAAA' = IPv6
@@ -77,7 +76,7 @@ def recvMsg(dst_ip, deny_list_file, log_file, defaultDoH, doh_server=None):
     sock.close()
 
 def DNS_over_Https(sock, doh_server, dns, client_payload, client_addr):
-    print("Using DoH with %s doh_server\n" % doh_server)
+    print("Using DoH with %s doh_server.\n" % doh_server)
 
     # Encode the dns packet in base_64 encoding before sending it via DoH
     base64_dns = base64.urlsafe_b64encode(bytes(client_payload)).rstrip(b"=")
@@ -171,8 +170,8 @@ def checkDomain(domainName, deny_list_file):
             print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
             exit(0)
     else:
-        print("No such file %s present in the path %s:\n" % (fileName, pathToDir))
-        print("\nStopping the server.\n\nPlease correct the path and restart the server.\n")
+        print("No such file %s present in the path:%s\n" % (fileName, pathToDir))
+        print("Stopping the server.\n\nPlease correct the path and restart the server.\n")
         print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
         exit(0)
 
@@ -202,15 +201,15 @@ def checkIP(ip):
         socket.inet_aton(ip)
     except socket.error:
         print("For -d parameter, either entered IP address is invalid or domain name is entered instead of IP address.\n")
-        print("-d parameter only accepts resolver's IP address\n")
-        print("Please restart the server program with correct -d\n")
+        print("-d parameter only accepts resolver's IP address.\n")
+        print("Please restart the server program with correct -d.\n")
         print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
         exit(0)
 
 # This function will check the ID returned by the https_reponse and compare it with DNS packet came from the client
 def checkID(clientDNS, dohDNS):
     if clientDNS.id != dohDNS.id:
-        print("Responding server sent a response packet with a different ID than the ID of packet sent by client")
+        print("Responding server sent a response packet with a different ID than the ID of packet sent by client.")
         print("Client ID:%d  Response ID:%d" % (clientDNS.id, dohDNS.id))
         print("Changing the reponse packet ID to %d\n" % clientDNS.id)
         dohDNS.id = clientDNS.id
