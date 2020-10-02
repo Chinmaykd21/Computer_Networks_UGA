@@ -124,11 +124,19 @@ def sendUDP(sock, dst_ip, dns, client_addr):
     # Here check the IP address entered, if it is valid then only proceed, otherwise program will exit.
     checkIP(dst_ip)
     # Sending packets through socket programming
-    out_sckt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    out_sckt.sendto(bytes(dns),(dst_ip,53))
-    dns_response, resolver_addr = out_sckt.recvfrom(1024)
-    sock.sendto(dns_response, client_addr)
-    out_sckt.close()
+    try:
+        out_sckt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        out_sckt.settimeout(4)
+        out_sckt.sendto(bytes(dns),(dst_ip,53))
+        dns_response, resolver_addr = out_sckt.recvfrom(1024)
+        sock.sendto(dns_response, client_addr)
+        out_sckt.close()
+    except Exception as e:
+        print("DNS resolver did not send any valid response or DNS request did not reach the DNS resolver.\n")
+        print("Resolver's IP address:%s\n" % dst_ip)
+        print("Please check the exception observerd:", e)
+        print("\n<--------------------------------------End of the DNS request-------------------------------------------->\n")
+        exit(0)
     print("Check the client for the response from the resolver!\n")
     print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
 
@@ -159,31 +167,14 @@ def checkDomain(domainName, deny_list_file):
                 return (domainName, "ALLOW")
         except Exception as e:
             print(e)
-            print("Stopping the server.\n\nPlease correct the path and restart the server.\n")
+            print("\nStopping the server.\n\nPlease correct the path and restart the server.\n")
+            print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
             exit(0)
     else:
         print("No such file %s present in the path %s:\n" % (fileName, pathToDir))
-        print("Stopping the server.\n\nPlease correct the path and restart the server.\n")
+        print("\nStopping the server.\n\nPlease correct the path and restart the server.\n")
         print("<--------------------------------------End of the DNS request-------------------------------------------->\n")
         exit(0)
-        # print("Reading from the \"Deny_Domain.txt\" created by the programmer from directory:\n", os.getcwd())
-        # # Reading from the current working directory
-        # with open("Deny_Domain.txt", "r") as readFile:
-        #     readLines = readFile.readlines()
-        #     # Here we will check if the domain name sent from the client is present in the deny_list file or not.
-        #     for line in readLines:
-        #         # if the entered domain packet is "." or " "
-        #         if line == domainName:
-        #             print("%s domain name is present in the \"%s\" file, %s domain name is blocked.\n" % (domainName, fileName,domainName))
-        #             return (domainName, "DENY")
-        #         else:
-        #         # If the domain name is found in deny list then send an NX message to the client stating that the domain name is blocked
-        #             fileDomain = line.strip().rstrip(".")
-        #             if fileDomain == domainName:
-        #                 print("%s domain name is present in the Deny_Domain.txt file, %s domain name is blocked.\n" % (domainName, domainName))
-        #                 return (domainName, "DENY")
-        #     print("Allowed Queried Domain:%s\n" % domainName)
-        #     return (domainName, "ALLOW")
 
 # This function will store the logs in the log file mentioned by the user
 def storeLogs(domain, queryType, flag, log_file):
@@ -196,12 +187,13 @@ def storeLogs(domain, queryType, flag, log_file):
         with open(pathToFile, "a") as writeFile:
             log = str(domain) + " " +  str(queryType) + " " + str(flag) + "\n"
             writeFile.write(log)
-        print("Access the log file \"%s\" at %s\n" % (log_file, os.path.abspath(pathToDir)))
+        print("Access the log file \"%s\" at %s\n" % (fileName, os.path.abspath(pathToDir)))
     else:
+        print("Invalid path mentioned with -l parameter:%s\n" % pathToDir)
         with open(fileName, "a") as writeFile:
             log = str(domain) + " " +  str(queryType) + " " + str(flag) + "\n"
             writeFile.write(log)
-        print("Access the log file \"%s\" at %s\n" % (log_file, os.path.abspath(pathToDir)))
+        print("Creating the log file \"%s\" at %s\n" % (fileName, os.getcwd()))
 
 # Invalid IP address or domain name as a parameter is not accepted, and upon identifying the legality of IP address this function will terminate the server
 def checkIP(ip):
