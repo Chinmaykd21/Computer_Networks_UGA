@@ -3,16 +3,19 @@ from _thread import *
 import subprocess
 import threading
 import argparse
+import fnmatch
 import socket
 import sys
 import re
 import os
+import math
 
 
 # This function will get the content length from the HTTP response which we get from the GET request
 def get_colength(response):
     # if the Accept-range is bytes then only return the content length otherwise exit the downloader
     decode_response = response.split(b'\r\n\r\n')[0].decode("utf-8")
+    print("Decoded response header to get content-length", decode_response)
     match = re.search(r'Accept-Ranges: bytes', decode_response)
     if match:
         pre_data = decode_response.split('\r\n')
@@ -23,7 +26,7 @@ def get_colength(response):
                 break
     else:
         print("Since Accept-Ranges does not have bytes value, downloader cannot support ranges to download chunk.")
-        exit(0)
+        exit()
     return content_length
 
 # This function will get the hostname and the remaining part from the object url
@@ -34,8 +37,12 @@ def get_host(object_url):
         object_url = object_url.replace('https://','')
     
     info = object_url.split('/', 1)
-    host_name = info[0]
-    req_part = info[1]
+    if len(info) == 2:
+        host_name = info[0]
+        req_part = info[1]
+    else:
+        host_name = info[0]
+        req_part = ''
     return (host_name, req_part)
 
 # This function will create a list which contains information about size of chunks
@@ -77,29 +84,35 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
     sock.send(bytes(request, 'utf-8'))
     opResponse = b''
     while True:
-        response = sock.recv(65536)
+        try:
+            response = sock.recv(65536)
+        except Exception as e:
+            print(e)
         if not response: # -1 & 0 are also one of the checks to stop the data
-            print("Got all the data")
+            print("Got all the data \n =========================================")
             break
         else:
             print("Appending the data to opResponse list")
             opResponse = opResponse + response
     
-    response_body = opResponse.split(b'\r\n\r\n') # To seperate header from body and then send the data for saving
+    response_body = opResponse.split(b'\r\n\r\n', 1) # To seperate header from body and then send the data for saving
+    print("header:", response_body[0].decode("utf-8"))
     print("The end")
     print("length of chunk ============> " , len(response_body[1]))
     # save opResponse bytes data to chunks file
     save_chunk(response_body[1], output_dir, file_name, num)
-    make_single_chunk(output_dir, file_name)
     sock.close()
 
 # This function will read all the files from the folder and then it will merge all of them in one single file
-def make_single_chunk(output_dir, file_name):
+def make_single_file(output_dir, file_name):
     if os.path.exists(os.path.abspath(output_dir)):
         fullOp=b''
         for filename in os.listdir(output_dir):
-            with open(os.path.join(output_dir, filename), "rb") as op:
-                fullOp = fullOp + op.read()
+            if fnmatch.fnmatch(filename,'*.chunk_*'):
+                print("Inside")
+                with open(os.path.join(output_dir, filename), "rb") as op:
+                    fullOp = fullOp + op.read()
+                    op.close()
         finalOp = os.path.join(os.path.abspath(output_dir), file_name)
         with open(finalOp, "wb") as opt:
             opt.write(fullOp)
@@ -145,11 +158,11 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
     sizeOfSingleChunk = 0
     sizeOfLastChunk = 0
     if (content_length % num_chunks == 0):
-        sizeOfSingleChunk = content_length// num_chunks
+        sizeOfSingleChunk = math.floor(content_length / num_chunks)
         sizeOfLastChunk = 0
     else:
-        sizeOfSingleChunk = content_length // num_chunks
-        sizeOfLastChunk = (content_length % num_chunks) + (content_length // num_chunks)
+        sizeOfSingleChunk = math.floor(content_length / num_chunks)
+        sizeOfLastChunk = (content_length % num_chunks) + math.floor(content_length / num_chunks)
 
     # creating the list of bytes range
     outputRange = get_range_list(sizeOfSingleChunk, sizeOfLastChunk, content_length, num_chunks)
@@ -160,14 +173,10 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
     # creating ranged request using makesocket function
     for i in range(num_chunks):
         if i < num_chunks - 1:
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1]-1, output_dir, file_name, i + 1)
-            print("Start:", outputRange[i])
-            print("End:", outputRange[i + 1])
+            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
         else:
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1]-1, output_dir, file_name, i + 1)
-            print("Start:", outputRange[i])
-            print("End:", outputRange[i + 1])
-
+            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+    make_single_file(output_dir, file_name)
 
 # Main function
 def main():
@@ -175,7 +184,7 @@ def main():
     
     parser.add_argument('-n', metavar='num_chunks',
                     help='Number of chunks', 
-                    type=int, default=1)
+                    type=int, default=2)
     
     parser.add_argument('-o', metavar= 'output_dir', 
                     help='Directory name where the chunks will be stored', 
