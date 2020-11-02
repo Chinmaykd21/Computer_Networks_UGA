@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-import argparse
+from _thread import *
 import subprocess
+import threading
+import argparse
 import socket
 import sys
 import re
+import os
+
 
 # This function will get the content length from the HTTP response which we get from the GET request
 def get_colength(response):
@@ -58,10 +62,8 @@ def get_range_list(sizeOfSingleChunk, sizeOfLastChunk, content_length, num_chunk
     return outputRange
 
 # This function will create ranged GET http/1.1 request
-def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange):
+def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, file_name, num):
     SERVER_PORT = 80
-    print(startRange)
-    print(endRange)
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((TARGET_HOST, SERVER_PORT))
@@ -70,7 +72,6 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange):
         print("Failed to bind the socket to %s server at port %d.\n" %(TARGET_HOST, SERVER_PORT))
         exit(0)
 
-    # Send GET request to get the content-length
     request = "GET /%s HTTP/1.1\r\nHost:%s\r\nRange: bytes=%d-%d\r\n\r\n" % (TARGET_INFO ,TARGET_HOST, startRange, endRange)
     sock.send(bytes(request, 'utf-8'))
     opResponse = []
@@ -80,16 +81,37 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange):
             print("Got all the data")
             break
         else:
-            opResponse.append(response)
             print("Appending the data to opResponse list")
+            opResponse.append(response)
     print("The end")
+    # save opResponse bytes data to chunks file
+    save_chunk(opResponse, output_dir, file_name, num)
     sock.close()
 
+# This function will save the HTTP response to the filenames in following format file_name.chunk_1, file_name.chunk_2, etc.
+def save_chunk(opResponse, output_dir, file_name, num):
+    if os.path.exists(os.path.isdir(output_dir)):
+        out_data = b''
+        for byteData in opResponse:
+            # This code will be used to concatenate the bytes data from the opResponse to a single chunk
+            out_data = out_data + byteData
+        # This will store the concatenated data into a file with format file_name.chunk_1, file_name.chunk_2, etc.
+        opName = file_name + '.chunk_' + str(num)
+        print(opName)
+        # This will be the absolute path with the file name
+        opFile = os.path.join(os.path.abspath(output_dir), opName)
+        print("outputFile", opFile)
+        # This line will write the data
+        try:
+            out = open(opFile, 'wb')
+            out.write(out_data)
+        except Exception as e:
+            print(e)
+            print("Cannot write file to path")
+    else:
+        print("The output directory path does not exist, please check the output directory path and try again")
 
-# def recvMsg(num_chunks, output_dir, file_name, object_url):
-def main_downloader():
-    num_chunks = 3
-    object_url = 'http://cobweb.cs.uga.edu/~perdisci/CSCI6760-F20/test_files/generic_arch_steps375x250.png'
+def recvMsg(num_chunks, output_dir, file_name, object_url):
     TARGET_HOST, TARGET_INFO = get_host(object_url)
     SERVER_PORT = 80
 
@@ -130,39 +152,35 @@ def main_downloader():
     # creating ranged request using makesocket function
     for i in range(num_chunks):
         if i < num_chunks - 1:
-            print(i)
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1)
+            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
         else:
-            print(i)
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1])
+            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1], output_dir, file_name, i + 1)
 
 
 # Main function
 def main():
-    # parser = argparse.ArgumentParser(description='RUN TRACEROUTE MULTIPLE TIMES TOWARDS A GIVEN TARGET HOST.')
+    parser = argparse.ArgumentParser(description='RUN TRACEROUTE MULTIPLE TIMES TOWARDS A GIVEN TARGET HOST.')
     
-    # parser.add_argument('-n', metavar='num_chunks',
-    #                 help='Number of chunks', 
-    #                 type=int, default=1)
+    parser.add_argument('-n', metavar='num_chunks',
+                    help='Number of chunks', 
+                    type=int, default=3)
     
-    # parser.add_argument('-o', metavar= 'output_dir', 
-    #                 help='Directory name where the chunks will be stored', 
-    #                 type=str, default = 'output_dir')
+    parser.add_argument('-o', metavar= 'output_dir', 
+                    help='Directory name where the chunks will be stored', 
+                    type=str, default = 'output_dir')
     
-    # parser.add_argument('-f', metavar= 'file_name',
-    #                 help='Name of the chunks which will be downloaded', 
-    #                 type=str, default = 'file_name')
+    parser.add_argument('-f', metavar= 'file_name',
+                    help='Name of the chunks which will be downloaded', 
+                    type=str, default = 'opFile')
     
-    # parser.add_argument('-u', metavar='object_url',
-    #                 help='Object URL', 
-    #                 type= str)
+    parser.add_argument('-u', metavar='object_url',
+                    help='Object URL', 
+                    type= str, default = 'http://cobweb.cs.uga.edu/~perdisci/CSCI6760-F20/test_files/generic_arch_steps375x250.png')
                         
-    # args = parser.parse_args()
+    args = parser.parse_args()
     
-    # # calling out the trace function to start the processing
-    # trace(args.n, args.o, args.f, args.u)
-
-    main_downloader()
+    # calling out the trace function to start the processing
+    recvMsg(args.n, args.o, args.f, args.u)
 
 # calling the main function
 if __name__=='__main__':
