@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from _thread import *
+from threading import Thread
 import subprocess
 import threading
 import argparse
@@ -83,36 +83,57 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
     print("Request:", request)
     sock.send(bytes(request, 'utf-8'))
     opResponse = b''
+    http_header = b''
+    http_content_length = 0
+
     while True:
         try:
             response = sock.recv(65536)
         except Exception as e:
             print(e)
-        if not response: # -1 & 0 are also one of the checks to stop the data
-            print("Got all the data \n =========================================")
-            break
+        
+        if http_header == b'':
+            http_header, http_body = response.split(b'\r\n\r\n',1)
+            print("header:-",http_header.decode('utf-8'))
+            http_content_length = http_content_length + len(http_body)
+            opResponse = opResponse + http_body
         else:
-            print("Appending the data to opResponse list")
+            http_content_length = http_content_length + len(response)
             opResponse = opResponse + response
+        
+        if http_content_length == (endRange - startRange + 1):
+            break
+
+    #     if (not response) or (response == -1) or (response == 0): # -1 & 0 are also one of the checks to stop the data
+    #     # if len(opResponse) == endRange-startRange: # -1 & 0 are also one of the checks to stop the data
+    #         print("Got all the data \n =========================================")
+    #         break
+    #     else:
+    #         print("Appending the data to opResponse list")
+    #         opResponse = opResponse + response
     
-    response_body = opResponse.split(b'\r\n\r\n', 1) # To seperate header from body and then send the data for saving
-    print("header:", response_body[0].decode("utf-8"))
-    print("The end")
-    print("length of chunk ============> " , len(response_body[1]))
+    # response_body = opResponse.split(b'\r\n\r\n', 1) # To seperate header from body and then send the data for saving
+    print("length of chunk ============> " , len(opResponse))
     # save opResponse bytes data to chunks file
-    save_chunk(response_body[1], output_dir, file_name, num)
+    save_chunk(opResponse, output_dir, file_name, num)
     sock.close()
 
 # This function will read all the files from the folder and then it will merge all of them in one single file
-def make_single_file(output_dir, file_name):
+def make_single_file(output_dir, file_name, num_chunks):
+    limit = 1
     if os.path.exists(os.path.abspath(output_dir)):
         fullOp=b''
-        for filename in os.listdir(output_dir):
-            if fnmatch.fnmatch(filename,'*.chunk_*'):
-                print("Inside")
-                with open(os.path.join(output_dir, filename), "rb") as op:
-                    fullOp = fullOp + op.read()
-                    op.close()
+        # for filename in os.listdir(output_dir):
+            # if fnmatch.fnmatch(filename,'*.chunk_*'):
+        for i in range(num_chunks):
+            tmpFile = file_name + '.chunk_' + str(limit)       
+            print("Inside")
+            with open(os.path.join(output_dir, tmpFile), "rb") as op:
+                fullOp = fullOp + op.read()
+                print("---------")
+                op.close()
+            limit = limit + 1
+
         finalOp = os.path.join(os.path.abspath(output_dir), file_name)
         with open(finalOp, "wb") as opt:
             opt.write(fullOp)
@@ -170,13 +191,25 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
     # close the socket connection
     sock.close()
 
+    list_thread = []
     # creating ranged request using makesocket function
     for i in range(num_chunks):
         if i < num_chunks - 1:
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+            print("starting thread")
+            thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
+            # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
         else:
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
-    make_single_file(output_dir, file_name)
+            print("starting thread")
+            thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
+            # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+        list_thread.append(thread)
+    
+    for thread in list_thread:
+        thread.start()
+        thread.join()
+
+    
+    make_single_file(output_dir, file_name, num_chunks)
 
 # Main function
 def main():
