@@ -73,41 +73,49 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
         exit(0)
 
     request = "GET /%s HTTP/1.1\r\nHost:%s\r\nRange: bytes=%d-%d\r\n\r\n" % (TARGET_INFO ,TARGET_HOST, startRange, endRange)
+    print("Request:", request)
     sock.send(bytes(request, 'utf-8'))
-    opResponse = []
+    opResponse = b''
     while True:
         response = sock.recv(65536)
-        if not response:
+        if not response: # -1 & 0 are also one of the checks to stop the data
             print("Got all the data")
             break
         else:
             print("Appending the data to opResponse list")
-            opResponse.append(response)
+            opResponse = opResponse + response
+    
+    response_body = opResponse.split(b'\r\n\r\n') # To seperate header from body and then send the data for saving
     print("The end")
+    print("length of chunk ============> " , len(response_body[1]))
     # save opResponse bytes data to chunks file
-    save_chunk(opResponse, output_dir, file_name, num)
+    save_chunk(response_body[1], output_dir, file_name, num)
+    make_single_chunk(output_dir, file_name)
     sock.close()
+
+# This function will read all the files from the folder and then it will merge all of them in one single file
+def make_single_chunk(output_dir, file_name):
+    if os.path.exists(os.path.abspath(output_dir)):
+        fullOp=b''
+        for filename in os.listdir(output_dir):
+            with open(os.path.join(output_dir, filename), "rb") as op:
+                fullOp = fullOp + op.read()
+        finalOp = os.path.join(os.path.abspath(output_dir), file_name)
+        with open(finalOp, "wb") as opt:
+            opt.write(fullOp)
 
 # This function will save the HTTP response to the filenames in following format file_name.chunk_1, file_name.chunk_2, etc.
 def save_chunk(opResponse, output_dir, file_name, num):
-    if os.path.exists(os.path.isdir(output_dir)):
-        out_data = b''
-        for byteData in opResponse:
-            # This code will be used to concatenate the bytes data from the opResponse to a single chunk
-            out_data = out_data + byteData
-        # This will store the concatenated data into a file with format file_name.chunk_1, file_name.chunk_2, etc.
+    if os.path.isdir(output_dir):
         opName = file_name + '.chunk_' + str(num)
-        print(opName)
         # This will be the absolute path with the file name
         opFile = os.path.join(os.path.abspath(output_dir), opName)
-        print("outputFile", opFile)
         # This line will write the data
         try:
             out = open(opFile, 'wb')
-            out.write(out_data)
+            out.write(opResponse)
         except Exception as e:
             print(e)
-            print("Cannot write file to path")
     else:
         print("The output directory path does not exist, please check the output directory path and try again")
 
@@ -152,9 +160,13 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
     # creating ranged request using makesocket function
     for i in range(num_chunks):
         if i < num_chunks - 1:
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1]-1, output_dir, file_name, i + 1)
+            print("Start:", outputRange[i])
+            print("End:", outputRange[i + 1])
         else:
-            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1], output_dir, file_name, i + 1)
+            make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1]-1, output_dir, file_name, i + 1)
+            print("Start:", outputRange[i])
+            print("End:", outputRange[i + 1])
 
 
 # Main function
@@ -163,7 +175,7 @@ def main():
     
     parser.add_argument('-n', metavar='num_chunks',
                     help='Number of chunks', 
-                    type=int, default=3)
+                    type=int, default=1)
     
     parser.add_argument('-o', metavar= 'output_dir', 
                     help='Directory name where the chunks will be stored', 
