@@ -10,6 +10,49 @@ import re
 import os
 import math
 
+# This function will check the status code of the HTTP response, and if the reponse is other than 200, 201, 202, 203, 204, 205, 206, 207, 208, 226 these status codes, it will return false.
+def get_status_code_main(response):
+    response_status_flag = False
+    response_status_code = 0
+    status_codes = [200, 201, 202, 203, 204, 205, 206, 207, 208, 226]
+    # To get the header
+    response_header = response.split(b'\r\n\r\n')[0].decode('utf-8')
+
+    # To get the HTTP status line
+    split_header = response_header.split('\r\n')
+
+    # To get the status code
+    for eachLine in split_header:
+        eachData = eachLine.split()
+        if eachData[0] == 'HTTP/1.1':
+            response_status_code = int(eachData[1])
+            break
+    
+    # Check if response status code is present in the pre-determined status codes.
+    if (response_status_code in status_codes):
+        response_status_flag = True
+        return (response_status_code, response_status_flag)
+
+    return (response_status_flag, response_status_code)
+
+def get_status_code(split_decoded_http_header):
+    response_status_flag = False
+    response_status_code = 0
+    status_codes = [200, 201, 202, 203, 204, 205, 206, 207, 208, 226]
+
+    # To get the status code
+    for eachLine in split_decoded_http_header:
+        eachData = eachLine.split()
+        if eachData[0] == 'HTTP/1.1':
+            response_status_code = int(eachData[1])
+            break
+    
+    # Check if response status code is present in the pre-determined status codes.
+    if (response_status_code in status_codes):
+        response_status_flag = True
+        return (response_status_code, response_status_flag)
+
+    return (response_status_flag, response_status_code)
 
 # This function will get the content length from the HTTP response which we get from the GET request
 def get_colength(response):
@@ -71,10 +114,13 @@ def get_range_list(sizeOfSingleChunk, sizeOfLastChunk, content_length, num_chunk
 # This function will create ranged GET http/1.1 request
 def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, file_name, num):
     SERVER_PORT = 80
+    opResponse = b''
+    http_header = b''
+    http_content_length = 0
+    response_status_code = 0
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((TARGET_HOST, SERVER_PORT))
-
     except Exception as e:
         print("Failed to bind the socket to %s server at port %d.\n" %(TARGET_HOST, SERVER_PORT))
         exit(0)
@@ -82,9 +128,6 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
     request = "GET /%s HTTP/1.1\r\nHost:%s\r\nRange: bytes=%d-%d\r\n\r\n" % (TARGET_INFO ,TARGET_HOST, startRange, endRange)
     print("Request:", request)
     sock.send(bytes(request, 'utf-8'))
-    opResponse = b''
-    http_header = b''
-    http_content_length = 0
 
     while True:
         try:
@@ -94,9 +137,18 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
         
         if http_header == b'':
             http_header, http_body = response.split(b'\r\n\r\n',1)
-            print("header:-",http_header.decode('utf-8'))
-            http_content_length = http_content_length + len(http_body)
-            opResponse = opResponse + http_body
+            decode_http_header = http_header.decode('utf-8')
+            print(decode_http_header)
+            split_decoded_http_header = decode_http_header.split('\r\n')
+            # checking the status code with this function
+            response_status_flag, response_status_code = get_status_code(split_decoded_http_header)
+            if response_status_flag:
+                http_content_length = http_content_length + len(http_body)
+                opResponse = opResponse + http_body
+            else:
+                print("The status code of the partial HTTP request is:", response_status_code)
+                print("Exiting the downloader...")
+                exit()
         else:
             http_content_length = http_content_length + len(response)
             opResponse = opResponse + response
@@ -123,8 +175,6 @@ def make_single_file(output_dir, file_name, num_chunks):
     limit = 1
     if os.path.exists(os.path.abspath(output_dir)):
         fullOp=b''
-        # for filename in os.listdir(output_dir):
-            # if fnmatch.fnmatch(filename,'*.chunk_*'):
         for i in range(num_chunks):
             tmpFile = file_name + '.chunk_' + str(limit)       
             print("Inside")
@@ -140,18 +190,20 @@ def make_single_file(output_dir, file_name, num_chunks):
 
 # This function will save the HTTP response to the filenames in following format file_name.chunk_1, file_name.chunk_2, etc.
 def save_chunk(opResponse, output_dir, file_name, num):
-    if os.path.isdir(output_dir):
-        opName = file_name + '.chunk_' + str(num)
-        # This will be the absolute path with the file name
-        opFile = os.path.join(os.path.abspath(output_dir), opName)
-        # This line will write the data
-        try:
-            out = open(opFile, 'wb')
-            out.write(opResponse)
-        except Exception as e:
-            print(e)
-    else:
-        print("The output directory path does not exist, please check the output directory path and try again")
+    # If given path does not exists then create directory at the mentioned path.
+    if not os.path.exists(output_dir):
+        # create a directory with name given by the variable output_dir
+        os.makedirs(output_dir)
+    # this will be the output file name
+    opName = file_name + '.chunk_' + str(num)
+    # This will be the absolute path with the file name
+    opFile = os.path.join(os.path.abspath(output_dir), opName)
+    # This line will write the data
+    try:
+        out = open(opFile, 'wb')
+        out.write(opResponse)
+    except Exception as e:
+        print(e)
 
 def recvMsg(num_chunks, output_dir, file_name, object_url):
     TARGET_HOST, TARGET_INFO = get_host(object_url)
@@ -170,46 +222,61 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
     request = "GET /%s HTTP/1.1\r\nHost:%s\r\n\r\n" % (TARGET_INFO ,TARGET_HOST)
     sock.send(bytes(request, 'utf-8'))
 
-    # receive data
-    response = sock.recv(65536)
-    # Getting the content length
-    content_length = get_colength(response)
+    try:
+        # receive data
+        response = sock.recv(65536)
+    except Exception as e:
+        print(e)
+        exit()
+
+    # If the response_status_flag is True then only run the below code, otherwise end the program with appropriate print message
+    response_status_flag, response_status_code = get_status_code_main(response)
     
-    # To get the size of the single chunk
-    sizeOfSingleChunk = 0
-    sizeOfLastChunk = 0
-    if (content_length % num_chunks == 0):
-        sizeOfSingleChunk = math.floor(content_length / num_chunks)
+    if response_status_flag:
+        # Getting the content length
+        content_length = get_colength(response)
+        
+        # To get the size of the single chunk
+        sizeOfSingleChunk = 0
         sizeOfLastChunk = 0
-    else:
-        sizeOfSingleChunk = math.floor(content_length / num_chunks)
-        sizeOfLastChunk = (content_length % num_chunks) + math.floor(content_length / num_chunks)
-
-    # creating the list of bytes range
-    outputRange = get_range_list(sizeOfSingleChunk, sizeOfLastChunk, content_length, num_chunks)
-    
-    # close the socket connection
-    sock.close()
-
-    list_thread = []
-    # creating ranged request using makesocket function
-    for i in range(num_chunks):
-        if i < num_chunks - 1:
-            print("starting thread")
-            thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
-            # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+        if (content_length % num_chunks == 0):
+            sizeOfSingleChunk = math.floor(content_length / num_chunks)
+            sizeOfLastChunk = 0
         else:
-            print("starting thread")
-            thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
-            # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
-        list_thread.append(thread)
-    
-    for thread in list_thread:
-        thread.start()
-        thread.join()
+            sizeOfSingleChunk = math.floor(content_length / num_chunks)
+            sizeOfLastChunk = (content_length % num_chunks) + math.floor(content_length / num_chunks)
 
+        # creating the list of bytes range
+        outputRange = get_range_list(sizeOfSingleChunk, sizeOfLastChunk, content_length, num_chunks)
+        
+        # close the socket connection
+        sock.close()
+
+        list_thread = []
+
+        # creating ranged request using make_sock_conn function using threading
+        for i in range(num_chunks):
+            if i < num_chunks - 1:
+                print("starting thread")
+                thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
+                # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+            else:
+                print("starting thread")
+                thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
+                # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+            list_thread.append(thread)
+        
+        for thread in list_thread:
+            thread.start()
+            thread.join()
+
+        # This function will merge all the chunks of data to be downloaded.
+        make_single_file(output_dir, file_name, num_chunks)
     
-    make_single_file(output_dir, file_name, num_chunks)
+    else:
+        print("The reponse code received from the GET request is:", response_status_code)
+        print("Ending the downloader...")
+        exit()
 
 # Main function
 def main():
