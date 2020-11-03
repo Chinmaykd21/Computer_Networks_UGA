@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from threading import Thread
 import subprocess
+import time as t
 import threading
 import argparse
 import fnmatch
@@ -58,7 +59,6 @@ def get_status_code(split_decoded_http_header):
 def get_colength(response):
     # if the Accept-range is bytes then only return the content length otherwise exit the downloader
     decode_response = response.split(b'\r\n\r\n')[0].decode("utf-8")
-    print("Decoded response header to get content-length", decode_response)
     match = re.search(r'Accept-Ranges: bytes', decode_response)
     if match:
         pre_data = decode_response.split('\r\n')
@@ -68,7 +68,8 @@ def get_colength(response):
                 content_length = int(eachData[1])
                 break
     else:
-        print("Since Accept-Ranges does not have bytes value, downloader cannot support ranges to download chunk.")
+        print("Since Accept-Ranges does not have bytes value, downloader cannot support partial HTTP range request to download data in chunks.")
+        print("Exiting the downloader...")
         exit()
     return content_length
 
@@ -107,7 +108,8 @@ def get_range_list(sizeOfSingleChunk, sizeOfLastChunk, content_length, num_chunk
             i = i + 1
         outputRange.append(outputRange[i] + sizeOfLastChunk)
 
-    print(outputRange)
+    print("The list of range to make the partial HTTP request:",outputRange)
+    print()
     
     return outputRange
 
@@ -123,9 +125,11 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
         sock.connect((TARGET_HOST, SERVER_PORT))
     except Exception as e:
         print("Failed to bind the socket to %s server at port %d.\n" %(TARGET_HOST, SERVER_PORT))
+        print("Exiting the downloader...")
         exit(0)
 
     request = "GET /%s HTTP/1.1\r\nHost:%s\r\nRange: bytes=%d-%d\r\n\r\n" % (TARGET_INFO ,TARGET_HOST, startRange, endRange)
+    print("Thread spawned:", num)
     print("Request:", request)
     sock.send(bytes(request, 'utf-8'))
 
@@ -134,11 +138,12 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
             response = sock.recv(65536)
         except Exception as e:
             print(e)
+            print("Exiting the downloader...")
+            exit()
         
         if http_header == b'':
             http_header, http_body = response.split(b'\r\n\r\n',1)
             decode_http_header = http_header.decode('utf-8')
-            print(decode_http_header)
             split_decoded_http_header = decode_http_header.split('\r\n')
             # checking the status code with this function
             response_status_flag, response_status_code = get_status_code(split_decoded_http_header)
@@ -146,7 +151,7 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
                 http_content_length = http_content_length + len(http_body)
                 opResponse = opResponse + http_body
             else:
-                print("The status code of the partial HTTP request is:", response_status_code)
+                print("The status code of the partial HTTP request is not within expected codes [200, 201, 202, 203, 204, 205, 206, 207, 208, 226]:", response_status_code)
                 print("Exiting the downloader...")
                 exit()
         else:
@@ -156,19 +161,10 @@ def make_sock_conn(TARGET_HOST, TARGET_INFO, startRange, endRange, output_dir, f
         if http_content_length == (endRange - startRange + 1):
             break
 
-    #     if (not response) or (response == -1) or (response == 0): # -1 & 0 are also one of the checks to stop the data
-    #     # if len(opResponse) == endRange-startRange: # -1 & 0 are also one of the checks to stop the data
-    #         print("Got all the data \n =========================================")
-    #         break
-    #     else:
-    #         print("Appending the data to opResponse list")
-    #         opResponse = opResponse + response
-    
-    # response_body = opResponse.split(b'\r\n\r\n', 1) # To seperate header from body and then send the data for saving
-    print("length of chunk ============> " , len(opResponse))
     # save opResponse bytes data to chunks file
     save_chunk(opResponse, output_dir, file_name, num)
     sock.close()
+    del sock
 
 # This function will read all the files from the folder and then it will merge all of them in one single file
 def make_single_file(output_dir, file_name, num_chunks):
@@ -176,11 +172,9 @@ def make_single_file(output_dir, file_name, num_chunks):
     if os.path.exists(os.path.abspath(output_dir)):
         fullOp=b''
         for i in range(num_chunks):
-            tmpFile = file_name + '.chunk_' + str(limit)       
-            print("Inside")
+            tmpFile = file_name + '.chunk_' + str(limit)
             with open(os.path.join(output_dir, tmpFile), "rb") as op:
                 fullOp = fullOp + op.read()
-                print("---------")
                 op.close()
             limit = limit + 1
 
@@ -204,6 +198,8 @@ def save_chunk(opResponse, output_dir, file_name, num):
         out.write(opResponse)
     except Exception as e:
         print(e)
+        print("Exiting the downloader...")
+        exit()
 
 def recvMsg(num_chunks, output_dir, file_name, object_url):
     TARGET_HOST, TARGET_INFO = get_host(object_url)
@@ -216,6 +212,7 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
 
     except Exception as e:
         print("Failed to bind the socket to %s server at port %d.\n" %(TARGET_HOST, SERVER_PORT))
+        print("Exiting the downloader...")
         exit(0)
 
     # Send some data
@@ -227,6 +224,7 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
         response = sock.recv(65536)
     except Exception as e:
         print(e)
+        print("Exiting the downloader...")
         exit()
 
     # If the response_status_flag is True then only run the below code, otherwise end the program with appropriate print message
@@ -251,31 +249,28 @@ def recvMsg(num_chunks, output_dir, file_name, object_url):
         
         # close the socket connection
         sock.close()
+        del sock
 
         list_thread = []
 
         # creating ranged request using make_sock_conn function using threading
         for i in range(num_chunks):
             if i < num_chunks - 1:
-                print("starting thread")
                 thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
-                # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
             else:
-                print("starting thread")
                 thread = Thread(target=make_sock_conn, args=(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1))
-                # make_sock_conn(TARGET_HOST, TARGET_INFO, outputRange[i], outputRange[i+1] - 1, output_dir, file_name, i + 1)
+            thread.start()
             list_thread.append(thread)
         
         for thread in list_thread:
-            thread.start()
             thread.join()
 
         # This function will merge all the chunks of data to be downloaded.
         make_single_file(output_dir, file_name, num_chunks)
     
     else:
-        print("The reponse code received from the GET request is:", response_status_code)
-        print("Ending the downloader...")
+        print("The reponse code received from the GET request is not within expected codes [200, 201, 202, 203, 204, 205, 206, 207, 208, 226]:", response_status_code)
+        print("Exiting the downloader...")
         exit()
 
 # Main function
@@ -299,9 +294,18 @@ def main():
                     type= str, default = 'http://cobweb.cs.uga.edu/~perdisci/CSCI6760-F20/test_files/generic_arch_steps375x250.png')
                         
     args = parser.parse_args()
+
+    print("Downloader starting...\n")
+
+    startTime = t.time()
     
     # calling out the trace function to start the processing
     recvMsg(args.n, args.o, args.f, args.u)
+
+    endTime = t.time()
+
+    totalTime = endTime - startTime
+    print("Total time to download: %.3f seconds" % totalTime)
 
 # calling the main function
 if __name__=='__main__':
