@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 from scapy.all import DNS, DNSQR, IP, sr1, TCP, dnsqtypes, DNSRR, Ether
 from scapy.layers.inet import *
 from scapy.layers.dns import *
@@ -23,7 +22,7 @@ def trace(max_hops, dst_port, target):
         while timeToLive <= max_hops :
             print("\n==================start===================")
             raw_tcp_pkt = Ether()/IP(dst=target, ttl=timeToLive)/TCP(dport=dst_port, sport=12345, flags='S')
-            # raw_tcp_pkt.show()
+            raw_tcp_pkt.show()
             st = time.time()
             sock.send(bytes(raw_tcp_pkt))
             timer = 0
@@ -38,7 +37,7 @@ def trace(max_hops, dst_port, target):
                         packetTime = str(round((et-st)*1000, 2)) + 'ms'
                         hop_list = print_hop_details(timeToLive, ipSrc, packetTime, flag, hop_list)
                         timeToLive += 1
-                        print("ICMP: Time to live after:", timeToLive)
+                        print("Time to live after:", timeToLive)
                         break
                     elif TCP in eth_pkt and eth_pkt[TCP].dport == 12345 and eth_pkt[TCP].flags == "SA":
                         et = time.time()
@@ -46,7 +45,7 @@ def trace(max_hops, dst_port, target):
                         packetTime = str(round((et-st)*1000, 2)) + 'ms'
                         hop_list = print_hop_details(timeToLive, ipSrc, packetTime, flag,hop_list)
                         timeToLive = max_hops+1
-                        print("TCP: Time to live after:", timeToLive)
+                        print("Time to live after:", timeToLive)
                         break
                     timer = timer + 0.01
                     if timer > 1:
@@ -55,7 +54,7 @@ def trace(max_hops, dst_port, target):
                         flag = True
                         hop_list = print_hop_details(timeToLive, ipSrc, packetTime, flag, hop_list)
                         timeToLive += 1
-                        print("TIMER: Time to live after:", timeToLive)
+                        print("Time to live after:", timeToLive)
                         break        
                 except Exception as e:
                     pass
@@ -67,7 +66,7 @@ def trace(max_hops, dst_port, target):
     return
 
 def print_hop_details(hop_number, hostIp, pTime, flag, hop_list):
-
+    
     if flag:
         if len(hop_list) >= hop_number:
             hop_list[hop_number-1].append("*")
@@ -78,27 +77,22 @@ def print_hop_details(hop_number, hostIp, pTime, flag, hop_list):
             hop_list.append(single_hop_details)
     else:
         if len(hop_list) >= hop_number:
+            # for eachHop in hop_list:
+            #     if eachHop[0] == hop_number:
             eachHop = hop_list[hop_number-1]
             for index, element in enumerate(eachHop):
-                if len(str(element)) >= 7:
+                if len(element) >= 7:
                     if element == hostIp and index >= int((len(eachHop)-1)/2):
                         eachHop.append(pTime)
-                        break
                     elif element == hostIp:
                         eachHop.append(hostIp)
                         eachHop.append(pTime)
-                        break
-                    elif index == (len(eachHop)-2):
-                        eachHop.append(hostIp)
-                        eachHop.append(pTime)
-                        break
         else:
             single_hop_details = []
             single_hop_details.append(hop_number)
             single_hop_details.append(hostIp)
             single_hop_details.append(pTime)
             hop_list.append(single_hop_details)
-    
     return hop_list
 
 # Main function
@@ -119,7 +113,7 @@ def main():
 
     args = parser.parse_args()
     
-    trace(args.m, args.p, args.t)
+    trace(args.m, args.f, args.t)
 
 # calling the main function
 if __name__=='__main__':
